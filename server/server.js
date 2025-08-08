@@ -4,10 +4,12 @@ const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const cors = require("cors");
 
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
+app.use(cors());
 
 app.use(express.json());
 
