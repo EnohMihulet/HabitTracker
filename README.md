@@ -1,0 +1,37 @@
+Habit Tracker
+    - A full-stack habit tracking web app.
+    - Track habits, log completions, and see your current streak.
+
+Live Features (So Far)
+    - Authentication
+    - User registration and login
+    - Adding and removing habits
+    - Secure password hashing
+    - JWT-based authentication
+
+Habits
+    - Create, read, update, and delete habits
+    - Store frequency (daily, weekly, custom)
+
+Habit Logs
+    - Log completions with optional back-dated entries
+    - Prevent duplicate logs per habit per day
+
+Streaks
+    - Calculate streaks based on consecutive completed log entries
+
+Stack
+    Backend (/server)
+    - Node.js
+    - Express
+    - SQLite
+    - JWT
+    - bcrypt
+    - dotenv
+
+    Frontend (/frontend)
+    - Next.js
+    - React
+    - Tailwind
+    - Fetch API
+    - Client-side routing & auth state management

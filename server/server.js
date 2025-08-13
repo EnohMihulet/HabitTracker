@@ -34,8 +34,9 @@ db.run(`CREATE TABLE IF NOT EXISTS users (
 
 db.run(`CREATE TABLE IF NOT EXISTS habits (
     id INTEGER PRIMARY KEY AUTOINCREMENT, 
-    user_id INTEGER NOT NULL, name TEXT NOT NULL, 
-    frequency TEXT NOT NULL, 
+    user_id INTEGER NOT NULL, name TEXT NOT NULL,
+    frequency_type TEXT NOT NULL CHECK(frequency_type IN ('daily','weekly','custom')),
+    times_per_week INTEGER NOT NULL CHECK(times_per_week BETWEEN 1 AND 7),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP, 
     FOREIGN KEY (user_id) REFERENCES users (id))`);
 
@@ -105,15 +106,15 @@ app.post("/login", (req, res) => {
 });
 
 app.post("/habits", authenticateToken, (req, res) => {
-    const user_id = req.user.id;
-    const {name, frequency} = req.body;
+    const userId = req.user.id;
+    const {name, frequencyType, timesPerWeek} = req.body;
 
-    if (!name || !frequency) {
+    if (!name || !frequencyType || !timesPerWeek) {
         return res.status(400).json({error: "name, and frequency are required"});
     }
 
-    const query = `INSERT INTO habits (user_id, name, frequency) VALUES (?, ?, ?)`;
-    db.run(query, [user_id, name, frequency], (err) => {
+    const query = `INSERT INTO habits (user_id, name, frequency_type, times_per_week) VALUES (?, ?, ?, ?)`;
+    db.run(query, [userId, name, frequencyType, timesPerWeek], function (err) {
         if (err) {
             return res.status(500).json({error: err.message});
         }
@@ -124,30 +125,28 @@ app.post("/habits", authenticateToken, (req, res) => {
 app.get("/habits", authenticateToken, (req, res) => {    
     const query = `SELECT * FROM habits WHERE user_id = ?`;
     db.all(query, [req.user.id], (err, rows) => {
-        if (err) {
-            return res.status(500).json({error: err.message});
-        }
-        res.json(rows);
+        if (err) return res.status(500).json({error: err.message});
+        res.json(rows.map(toCamelCase));
     });
 });
 
-app.put("/habits/:id", (authenticateToken, req, res) => {
+app.put("/habits/:id", authenticateToken, (req, res) => {
     const {id} = req.params;
-    const {name, frequency} = req.body;
+    const {name, frequencyType, timesPerWeek} = req.body;
 
-    if (!name || !frequency) {
+    if (!name || !frequencyType || !timesPerWeek) {
         return res.status(400).json({error: "name and frequency required"});
     }
 
-    const query = `UPDATE habits SET name = ?, frequency = ? WHERE id = ?`;
-    db.run(query, [name, frequency, id], function (err) {
+    const query = `UPDATE habits SET name = ?, frequency_type = ?, times_per_week = ? WHERE id = ?`;
+    db.run(query, [name, frequencyType, timesPerWeek, id], function (err) {
         if (err) {
             return res.status(500).json({error: err.message});
         }
         if (this.changes === 0) {
             return  res.status(404).json({error: "Habit not found"});
         }
-        res.json({message: "Habit upated successfully"});
+        res.json({message: "Habit updated successfully"});
     });
 });
 
@@ -167,32 +166,43 @@ app.delete("/habits/:id", authenticateToken, (req, res) => {
 });
 
 app.get("/habits/:id/streak", authenticateToken, (req, res) => {
-    const habit_id = req.params.id;
-
+    const habitId = req.params.id;
     const query = `SELECT date FROM habit_logs WHERE habit_id = ? ORDER BY date DESC`;
-    db.all(query, [habit_id], (err, logs) => {
-        if (!logs || logs.length === 0) {
-            return res.json({streak: 0});
-        }
+    db.all(query, [habitId], (err, logs) => {
+        if (!logs || logs.length === 0) return res.json({streak: 0});
+        const streak = calcStreak(logs);
+        res.json({streak});
+    });
+});
 
-        let streak = 1;
-        for (let i = 1; i < logs.length; i++) {
-            let prev = new Date(logs[i - 1].date);
-            let curr = new Date(logs[i].date);
-            let diffDays = (prev - curr) / (1000 * 60 * 60 * 24);
+app.get("/habits/streaks", authenticateToken, (req, res) => {
+    const query = `SELECT * FROM habits WHERE user_id = ?`;
+    db.all(query, [req.user.id], (err, habits) => {
+        if (err) return res.status(500).json({error: err.message});
+        if (!habits || habits.length === 0) return res.json([]);
 
-            if (diffDays === 1) {
-                streak++;
-            } else {
-                break;
-            }
-        }
-        return res.json({streak});
-    })
+        habits = habits.map(toCamelCase);
+        let completedCount = 0;
+
+        habits.forEach((habit, index) => {
+            const logQuery = `SELECT date FROM habit_logs WHERE habit_id = ? ORDER BY date DESC`;
+            db.all(logQuery, [habit.id], (err, logs) => {
+                if (err || !logs || logs.length === 0) {
+                    habits[index].streak = 0;
+                } else {
+                    habits[index].streak = calcStreak(logs.map(l => l.date));
+                }
+                completedCount++;
+                if (completedCount === habits.length) {
+                    res.json(habits);
+                }
+            });
+        });
+    });
 });
 
 app.post("/habits/:id/log", authenticateToken, (req, res) => {
-    const habit_id = req.params.id;
+    const habitId = req.params.id;
     let {date} = req.body;
 
     if (!date) {
@@ -200,12 +210,12 @@ app.post("/habits/:id/log", authenticateToken, (req, res) => {
         date = today.toISOString().split("T")[0];
     }
 
-    if (!habit_id) {
+    if (!habitId) {
         return res.status(400).json({error: "habit_id is required"});
     } 
 
     const query = `INSERT INTO habit_logs (habit_id, date) VALUES (?, ?)`;
-    db.run(query, [habit_id, date], function (err) {
+    db.run(query, [habitId, date], function (err) {
         if (err) {
             if (err.message.includes("UNIQUE")) {
                 return res.status(400).json({error: "Habit already logged for this date"});
@@ -222,18 +232,13 @@ app.post("/habits/:id/log", authenticateToken, (req, res) => {
 });
 
 app.get("/habits/:id/logs", authenticateToken, (req, res) => {
-    const habit_id = req.params.id;
-    
-    if (!habit_id) {
-        return res.status(400).json({error: "habit_id is required"});
-    }
+    const habitId = req.params.id;
+    if (!habitId) return res.status(400).json({error: "habit_id is required"});
 
-    const query = `SELECT * FROM habit_logs WHERE habit_id = ? ORDER BY date DESC`
-    db.all(query, [habit_id], (err, logs) => {
-        if (err) {
-            return res.status(500).json({error: err.message});
-        }
-        return res.json({logs})
+    const query = `SELECT * FROM habit_logs WHERE habit_id = ? ORDER BY date DESC`;
+    db.all(query, [habitId], (err, logs) => {
+        if (err) return res.status(500).json({error: err.message});
+        res.json({logs: logs.map(toCamelCase)});
     });
 });
 
@@ -255,3 +260,30 @@ function authenticateToken(req, res, next) {
         next();
     });
 }
+
+function toUTC(d) { return  new Date(d + "T00:00:00z"); }
+function daysBetween(a, b) { return Math.round((toUTC(a) - toUTC(b)) / 86400000); }
+
+function calcStreak(dateStringsDesc) {
+    if (!dateStringsDesc || dateStringsDesc.length === 0) return 0;
+    let streak = 1;
+    for (let i = 1; i < dateStringsDesc.length; i++) {
+        const prev = dateStringsDesc[i-1];
+        const curr = dateStringsDesc[i];
+        if (daysBetween(prev, curr) === 1) {
+            streak++;
+        } else {
+            break;
+        }
+    }
+    return streak;
+}
+
+function toCamelCase(row) {
+    const newRow = {};
+    for (const key in row) {
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      newRow[camelKey] = row[key];
+    }
+    return newRow;
+  }

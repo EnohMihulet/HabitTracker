@@ -14,7 +14,7 @@ export default function LoginPage() {
         const res = await fetch("http://localhost:4000/login", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({username, password}),
+            body: JSON.stringify({username, password})
         });
 
         const data = await res.json();
@@ -25,11 +25,11 @@ export default function LoginPage() {
         }
 
         localStorage.setItem("token", data.token);
-        router.push("/");
+        router.push("/dashboard");
     }
 
     return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-100">
+    <main className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
       
         <div className="bg-white p-6 rounded shadow-md w-full max-w-sm">
             <h1 className="text-xl font-bold mb-4 text-center text-black">Login</h1>
@@ -40,7 +40,7 @@ export default function LoginPage() {
                 <button className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" type="submit">Login</button>
             </form>
         </div>
-
+        <button onClick={() => router.push("/register")} className="pt-2 text-blue-500 underline">Register</button>
     </main>
   );
 }
