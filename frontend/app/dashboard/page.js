@@ -1,7 +1,7 @@
 "use client";
 import {useRouter} from "next/navigation";
 import {useEffect, useState} from "react";
-import {PlusCircleIcon, TrashIcon, PencilSquareIcon, FireIcon, XCircleIcon} from "@heroicons/react/24/solid";
+import {PlusCircleIcon, TrashIcon, CheckIcon, PencilSquareIcon, FireIcon, XMarkIcon} from "@heroicons/react/24/solid";
 
 export default function Home() {
     const router = useRouter();
@@ -9,25 +9,28 @@ export default function Home() {
 
     const [isAddingHabit, setIsAddingHabit] = useState(false);
     const [habitName, setHabitName] = useState("");
-    const [frequencyType, setfrequencyType] = useState("");
-    const [timesPerWeek, settimesPerWeek] = useState(0);
+    const [frequencyType, setFrequencyType] = useState("");
+    const [timesPerWeek, setTimesPerWeek] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formError, setFormError] = useState("");
 
     const [isRemovingHabit, setIsRemovingHabit] = useState(false);
+
+    const [isEditingHabit, setIsEditingHabit] = useState(false);
+    const [editingHabitIndex, setEditingHabitIndex] = useState();
 
     const handleAddHabit = async (e) => {
         e.preventDefault();
         setFormError("");
     
         const name = habitName.trim();
-        let tps = timesPerWeek;
+        let tpw = timesPerWeek;
     
-        if (frequencyType === "daily") tps = 7;
-        else if (frequencyType === "weekly") tps = 1;
-        else if (frequencyType === "custom") tps = parseInt(tps, 10);
+        if (frequencyType === "daily") tpw = 7;
+        else if (frequencyType === "weekly") tpw = 1;
+        else if (frequencyType === "custom") tpw = parseInt(tpw, 10);
     
-        if (!name || !frequencyType || !tps) {
+        if (!name || !frequencyType || !tpw) {
             setFormError("Name and frequency are required");
             return;
         }
@@ -44,7 +47,7 @@ export default function Home() {
             const add_res = await fetch("http://localhost:4000/habits", {
                 method: "POST",
                 headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`,},
-                body: JSON.stringify({name, frequencyType, timesPerWeek: tps}),
+                body: JSON.stringify({name, frequencyType, timesPerWeek: tpw})
             });
     
             const data = await add_res.json().catch(() => ({}));
@@ -53,11 +56,11 @@ export default function Home() {
                 return;
             }
     
-            setHabits(prev => [{id: data.habitID, name, frequencyType, timesPerWeek: tps, streak: 0}, ...prev]);
+            setHabits(prev => [{id: data.habitID, name, frequencyType, timesPerWeek: tpw, streak: 0}, ...prev]);
     
             setHabitName("");
-            setfrequencyType("");
-            settimesPerWeek(0);
+            setFrequencyType("");
+            setTimesPerWeek(0);
             setIsAddingHabit(false);
         } finally {
             setIsSubmitting(false);
@@ -76,7 +79,7 @@ export default function Home() {
 
         const rem_res = await fetch(`http://localhost:4000/habits/${habitID}`, {
             method: "DELETE",
-            headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`,},
+            headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`}
         });
 
         const data = await rem_res.json().catch(() => ({}));
@@ -87,6 +90,95 @@ export default function Home() {
 
         setHabits((prev) => prev.filter((h) => h.id !== habitID));
     };
+
+    const resetHabitInfo = () => {
+        setEditingHabitIndex(null);
+        setHabitName("");
+        setFrequencyType("");
+        setTimesPerWeek(null);
+    }
+
+    const handleEditHabit = async (e) => {
+
+        const token = localStorage.getItem("token");
+        if (!token || !isTokenValid(token)) {
+            localStorage.removeItem("token");
+            router.replace("/login");
+            return;
+        }
+
+        const name = habitName.trim();
+        let tpw = timesPerWeek;
+        const habitID = habits[editingHabitIndex].id;
+
+        if (frequencyType === "daily") tpw = 7;
+        else if (frequencyType === "weekly") tpw = 1;
+        else if (frequencyType === "custom") tpw = parseInt(tpw, 10);
+
+        if (!name || !frequencyType || !tpw) {
+            setFormError("Name and frequency are required");
+            return;
+        }
+
+        const edit_res = await fetch(`http://localhost:4000/habits/${habitID}`, {
+            method: "PUT",
+            headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`},
+            body: JSON.stringify({name, frequencyType, timesPerWeek: tpw})
+        });
+
+        const data = await edit_res.json().catch(() => ({}));
+
+        if (!edit_res.ok) {
+            return;
+        }
+    }
+
+    useEffect(() => {
+        if (!isEditingHabit) return;
+        if (editingHabitIndex == null) return;
+
+        const h = habits[editingHabitIndex];
+        if (!h) return;
+
+        setHabitName(h.name || "");
+        setFrequencyType(h.frequencyType || "");
+        setTimesPerWeek(h.timesPerWeek ?? 0);
+    }, [isEditingHabit, editingHabitIndex, habits]);
+
+    const updateHabit = async (index, completed, e) => {
+        setHabits(prev => prev.map((h, i) => (i === index ? { ...h, completed } : h)));
+
+        const token = localStorage.getItem("token");
+        if (!token || !isTokenValid(token)) {
+            localStorage.removeItem("token");
+            router.replace("/login");
+            return;
+        }
+        
+        if (completed === true) {
+            const update_res = await fetch(`http://localhost:4000/habits/${habits[index].id}/log`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`}
+            });
+
+            const data = await update_res.json().catch(() => ({}));
+
+            if (!update_res.ok) {
+                return;
+            }
+        } else {
+            const update_res = await fetch(`http://localhost:4000/habits/${habits[index].id}/log`, {
+                method: "DELETE",
+                headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`}
+            });
+
+            const data = await update_res.json().catch(() => ({}));
+
+            if (!update_res.ok) {
+                return;
+            }
+        }
+    }
 
     useEffect(() => {
         const token = localStorage.getItem("token");
@@ -129,6 +221,16 @@ export default function Home() {
                 <img src="/file.svg" alt="Logo" className="h-8 w-8"></img>
                 <h1 className="text-2xl font-semibold">Habit Tracker Dashboard</h1>
             </header>
+
+            {(isEditingHabit || isAddingHabit || isRemovingHabit) && (
+                <div className="mx-auto w-full max-w-6xl px-6">
+                    <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                    {isAddingHabit && ("You’re adding a habit. Fill the the empty card and press 'Add Habit'.")}
+                    {isEditingHabit && ("You’re editing a habit. Click a card to edit and press 'Done' to apply changes.")}
+                    {isRemovingHabit && ("You’re removing a habit. Click the 'X' to remove it.")}
+                    </div>
+                </div>
+            )}
     
             {/* Main Section */}
             <section className="mx-auto grid w-full max-w-6xl flex-1 grid-cols-1 gap-8 p-6 md:grid-cols-3">
@@ -140,16 +242,18 @@ export default function Home() {
                         {/* Buttons to add, remove, or edit habits */}
                         <div className="flex space-x-2">
                             <button className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50" onClick={ isAddingHabit ? 
-                                () => {setIsAddingHabit(false)} : 
-                                () => {setIsRemovingHabit(false); setIsAddingHabit(true)}}>
+                                () => {resetHabitInfo(); setIsAddingHabit(false)} : 
+                                () => {resetHabitInfo(); setIsAddingHabit(true); setIsRemovingHabit(false); setIsEditingHabit(false)}}>
                                 <PlusCircleIcon className="h-6 w-6 text-green-500"/>
                             </button>
                             <button className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50" onClick={ isRemovingHabit ? 
-                                () => {setIsRemovingHabit(false); setIsAddingHabit(false)} : 
-                                () => {setIsRemovingHabit(true); setIsAddingHabit(false)}}>
+                                () => {resetHabitInfo(); setIsRemovingHabit(false)} : 
+                                () => {resetHabitInfo(); setIsRemovingHabit(true); setIsAddingHabit(false); setIsEditingHabit(false)}}>
                                 <TrashIcon className="h-6 w-6 text-red-500"/>
                             </button>
-                            <button className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50" type="submit">
+                            <button className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50" onClick={ isEditingHabit ? 
+                                () => {resetHabitInfo(); setIsEditingHabit(false)} :
+                                () => {resetHabitInfo(); setIsEditingHabit(true); setIsAddingHabit(false); setIsRemovingHabit(false)}}>
                                 <PencilSquareIcon className="h-6 w-6 text-yellow-500"/> 
                             </button>
                         </div>
@@ -160,26 +264,26 @@ export default function Home() {
                         {isAddingHabit && (
                             <form onSubmit={handleAddHabit} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                                 <div className="flex flex-col space-y-2">
-                                    <input type="text" value={habitName} onChange={(e) => setHabitName(e.target.value)} className="text-lg font-medium border rounded-sm p-1" placeholder="Habit Name"/>
+                                    <input type="text" value={habitName} onChange={(e) => setHabitName(e.target.value)} className="text-lg font-medium border rounded-sm p-1 w-xs max-w-sm" placeholder="Habit Name"/>
 
                                     {/* Bubbles to select frequency of habit */}
                                     <fieldset>
                                         <legend className="text-sm font-md text-gray-700">Frequency:</legend>
                                         <div className="flex items-center gap-4">
                                             <label className="inline-flex items-center gap-2">
-                                                <input type="radio" name="frequency" value="daily" checked={frequencyType === "daily"} onChange={(e) => setfrequencyType(e.target.value)} className="h-4 w-4 accent-blue-600"/>
+                                                <input type="radio" name="frequency" value="daily" checked={frequencyType === "daily"} onChange={(e) => setFrequencyType(e.target.value)} className="h-4 w-4 accent-blue-600"/>
                                                 <span className="text-sm text-gray-800">Daily</span>
                                             </label>
                                             <label className="inline-flex items-center gap-2">
-                                                <input type="radio" name="frequency" value="weekly" checked={frequencyType === "weekly"} onChange={(e) => setfrequencyType(e.target.value)} className="h-4 w-4 accent-blue-600"/>
+                                                <input type="radio" name="frequency" value="weekly" checked={frequencyType === "weekly"} onChange={(e) => setFrequencyType(e.target.value)} className="h-4 w-4 accent-blue-600"/>
                                                 <span className="text-sm text-gray-800">Weekly</span>
                                             </label>
                                             <label className="inline-flex items-center gap-2">
-                                                <input type="radio" name="frequency" value="custom" checked={frequencyType === "custom"} onChange={(e) => setfrequencyType(e.target.value)} className="h-4 w-4 accent-blue-600"/>
+                                                <input type="radio" name="frequency" value="custom" checked={frequencyType === "custom"} onChange={(e) => setFrequencyType(e.target.value)} className="h-4 w-4 accent-blue-600"/>
                                                 <span className="text-sm text-gray-800">Custom</span>
                                             </label>
                                             {frequencyType === "custom" && ( 
-                                                <input type="number" min={1} max={7} inputMode="numeric" value={timesPerWeek} onChange={(e) => settimesPerWeek(e.target.value)} placeholder="Times / week" className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900"/> )}
+                                                <input type="number" min={1} max={7} inputMode="numeric" value={timesPerWeek} onChange={(e) => setTimesPerWeek(Number(e.target.value))} placeholder="Times / week" className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900"/> )}
                                         </div>
                                     </fieldset>
                                     {formError && <p className="text-sm text-red-600">{formError}</p>}
@@ -195,27 +299,77 @@ export default function Home() {
                             </form>
                         )}
                         {/* Display Habits */}
-                        {habits.map((habit) => (
-                        <div key={habit.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                            <div>
-                                <h3 className="text-lg font-medium">{habit.name}</h3>
-                                {habit.frequencyType === "custom" ? 
-                                <p className="text-sm text-gray-500">{habit.timesPerWeek} {habit.timesPerWeek == 1 ? "time" : "times"} per week</p> :
-                                <p className="text-sm text-gray-500">{habit.frequencyType}</p> }
-                                
-                            </div>
-                            {habit.streak > 0 && (
-                            <div className="flex items-center gap-1 rounded-md bg-orange-50 px-2 py-1 text-sm text-orange-700">
-                                <FireIcon className="h-5 w-5 text-orange-500"></FireIcon>
-                                <div>{habit.streak}</div>
-                            </div>
-                            )}
+                        {habits.map((habit, index) => (
+                            <div key={habit.id} className={["flex items-center justify-between rounded-lg border bg-white p-4 shadow-sm transition", 
+                            "hover:shadow", editingHabitIndex == index && isEditingHabit ? "ring-2 ring-blue-500 border-blue-300 bg-blue-50" : "border-gray-200",
+                            isEditingHabit && editingHabitIndex !== index ? "opacity-60" : "opacity-100"].join(" ")} onClick={() => (setEditingHabitIndex(index))}>
+
+                            {/* Edit Selected Habit */}
+                            {editingHabitIndex == index && isEditingHabit ? (
+                                <form onSubmit={handleEditHabit} className="flex w-full">
+                                    <div className="flex flex-col space-y-2 w-full">
+                                        <input type="text" value={habitName} onChange={(e) => setHabitName(e.target.value)} className="text-lg font-medium border rounded-sm p-1 max-w-xs" placeholder="Habit Name"/>
+
+                                        {/* Bubbles to select frequency of habit */}
+                                        <fieldset>
+                                            <legend className="text-sm font-md text-gray-700">Frequency:</legend>
+                                            <div className="flex items-center gap-4">
+                                                <label className="inline-flex items-center gap-2">
+                                                    <input type="radio" name="frequency" value="daily" checked={frequencyType === "daily"} onChange={(e) => setFrequencyType(e.target.value)} className="h-4 w-4 accent-blue-600"/>
+                                                    <span className="text-sm text-gray-800">Daily</span>
+                                                </label>
+                                                <label className="inline-flex items-center gap-2">
+                                                    <input type="radio" name="frequency" value="weekly" checked={frequencyType === "weekly"} onChange={(e) => setFrequencyType(e.target.value)} className="h-4 w-4 accent-blue-600"/>
+                                                    <span className="text-sm text-gray-800">Weekly</span>
+                                                </label>
+                                                <label className="inline-flex items-center gap-2">
+                                                    <input type="radio" name="frequency" value="custom" checked={frequencyType === "custom"} onChange={(e) => setFrequencyType(e.target.value)} className="h-4 w-4 accent-blue-600"/>
+                                                    <span className="text-sm text-gray-800">Custom</span>
+                                                </label>
+                                                {frequencyType === "custom" && ( 
+                                                    <input type="number" min={1} max={7} inputMode="numeric" value={timesPerWeek} onChange={(e) => setTimesPerWeek(Number(e.target.value))} placeholder="Times / week" className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900"/> )}
+                                            </div>
+                                        </fieldset>
+                                        {formError && <p className="text-sm text-red-600">{formError}</p>}
+                                    </div>
+
+                                    {/* Submit / Cancel changes to habit */}
+                                    <div className="flex items-center gap-2">
+                                        <button type="button" className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50" onClick={() => {setIsEditingHabit(false); resetHabitInfo()}}>Cancel</button>
+                                        <button type="submit" disabled={isSubmitting} className="rounded-md bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60">
+                                            {isSubmitting ? "Editing..." : "Done"}
+                                        </button>
+                                    </div>
+                                </form> ) : (
+                                 
+                                    <div className="flex items-center flex-1">
+                                        <div className="flex flex-col">
+                                            <h3 className="text-lg font-medium">{habit.name}</h3>
+                                            {habit.frequencyType === "custom" ? 
+                                            <p className="text-sm text-gray-500">{habit.timesPerWeek} {habit.timesPerWeek == 1 ? "time" : "times"} per week</p> :
+                                            <p className="text-sm text-gray-500">{habit.frequencyType}</p> }
+                                        </div>
+                                    </div> )}
+                    
                             {isRemovingHabit && (
-                                <button type="button" onClick={(e) => removeHabit(habit.id, e)}>
-                                    <XCircleIcon className="h-7 w-7 text-red-600 hover:scale-115"/>
-                                </button>
-                            )}
-                        </div>
+                                <button type="button" className="relative inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500 hover:scale-110" onClick={(e) => removeHabit(habit.id, e)}>
+                                    <XMarkIcon className="h-5 w-5 text-white"/>
+                                </button> )}
+                            {!isAddingHabit && !isRemovingHabit && !isEditingHabit && (
+                                <div className="flex">
+                                {habit.streak > 1 && 
+                                    <div className="ml-auto mr-3 flex gap-1 rounded-md bg-orange-50 px-2 py-1 text-sm text-orange-700">
+                                        <FireIcon className="h-5 w-5 text-orange-500"></FireIcon>
+                                        <div>{habit.streak}</div>
+                                    </div>}
+
+                                    <button type="button" aria-pressed={habit.completed} onClick={(e) => updateHabit(index, !habit.completed, e)} 
+                                    className={["relative inline-flex h-8 w-8 items-center justify-center rounded-full border transition hover:scale-110",
+                                    habit.completed ? "bg-green-500 border-green-500" : "bg-white border-gray-300 hover:border-gray-400"].join(" ")} title={habit.completed ? "Unmark" : "Mark"}>
+                                        {habit.completed && (<CheckIcon className="h-5 w-5 text-white"/>)}
+                                    </button> 
+                                </div>)}
+                            </div>
                         ))}
 
                         {/* No habits to display */}
