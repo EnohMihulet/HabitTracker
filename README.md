@@ -11,14 +11,15 @@ Live Features (So Far)
 
 Habits
     - Create, read, update, and delete habits
-    - Store frequency (daily, weekly, custom)
+    - Store frequency
 
 Habit Logs
     - Log completions with optional back-dated entries
     - Prevent duplicate logs per habit per day
 
 Streaks
-    - Calculate streaks based on consecutive completed log entries
+    - Calculate streaks based on frequency (weekly, daily, custom)
+
 
 Stack
     Backend (/server)

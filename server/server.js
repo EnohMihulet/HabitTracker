@@ -167,52 +167,68 @@ app.delete("/habits/:id", authenticateToken, (req, res) => {
 
 app.get("/habits/:id/streak", authenticateToken, (req, res) => {
     const habitId = req.params.id;
-    const query = `SELECT date FROM habit_logs WHERE habit_id = ? ORDER BY date DESC`;
-    db.all(query, [habitId], (err, logs) => {
-        if (!logs || logs.length === 0) return res.json({streak: 0});
-        const streak = calcStreak(logs);
-        res.json({streak});
+  
+    const dateQuery = `SELECT date FROM habit_logs WHERE habit_id = ? ORDER BY date DESC`;
+    db.all(dateQuery, [habitId], (err, logs) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!logs || logs.length === 0) return res.json({ streak: 0 });
+  
+      const freqQuery = `SELECT frequency_type, times_per_week FROM habits WHERE id = ?`;
+      db.get(freqQuery, [habitId], (err2, freqData) => {
+        if (err2) return res.status(500).json({ error: err2.message });
+        if (!freqData) return res.status(404).json({ error: "Habit not found" });
+  
+        const datesDesc = logs.map(l => l.date); // strings like "YYYY-MM-DD"
+        const streak = calcStreak(freqData.frequency_type, freqData.times_per_week, datesDesc);
+        return res.json({ streak });
+      });
     });
-});
-
-app.get("/habits/streaks", authenticateToken, (req, res) => {
+  });
+  
+  app.get("/habits/streaks", authenticateToken, (req, res) => {
     const query = `SELECT * FROM habits WHERE user_id = ?`;
-    db.all(query, [req.user.id], (err, habits) => {
-        if (err) return res.status(500).json({error: err.message});
-        if (!habits || habits.length === 0) return res.json([]);
-
-        habits = habits.map(toCamelCase);
-        let completedCount = 0;
-
-        habits.forEach((habit, index) => {
-            const logQuery = `SELECT date FROM habit_logs WHERE habit_id = ? ORDER BY date DESC`;
-            db.all(logQuery, [habit.id], (err, logs) => {
-                if (err || !logs || logs.length === 0) {
-                    habits[index].streak = 0;
-                } else {
-                    habits[index].streak = calcStreak(logs.map(l => l.date));
-                }
-                completedCount++;
-                if (completedCount === habits.length) {
-                    res.json(habits);
-                }
-            });
+    db.all(query, [req.user.id], (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!rows || rows.length === 0) return res.json([]);
+  
+      // If you want camelCase fields:
+      let habits = rows.map(toCamelCase); // now use .frequencyType and .timesPerWeek
+      const today = new Date().toISOString().split("T")[0];
+      let completedCount = 0;
+  
+      habits.forEach((habit, index) => {
+        const logQuery = `SELECT date FROM habit_logs WHERE habit_id = ? ORDER BY date DESC`;
+        db.all(logQuery, [habit.id], (err2, logs) => {
+          if (err2 || !logs || logs.length === 0) {
+            habits[index].streak = 0;
+            habits[index].completed = false;
+          } else {
+            const datesDesc = logs.map(l => l.date);
+            habits[index].streak = calcStreak(habit.frequencyType, habit.timesPerWeek, datesDesc);
+            const latestDate = logs[0].date;
+            habits[index].completed = latestDate === today;
+          }
+  
+          completedCount++;
+          if (completedCount === habits.length) {
+            return res.json(habits);
+          }
         });
+      });
     });
-});
+  });
 
 app.post("/habits/:id/log", authenticateToken, (req, res) => {
     const habitId = req.params.id;
-    let {date} = req.body;
-
-    if (!date) {
-        const today = new Date();
-        date = today.toISOString().split("T")[0];
-    }
+    let {date} = req.body || {};
 
     if (!habitId) {
         return res.status(400).json({error: "habit_id is required"});
     } 
+
+    if (!date) {
+        date = new Date().toISOString().split("T")[0];
+    }
 
     const query = `INSERT INTO habit_logs (habit_id, date) VALUES (?, ?)`;
     db.run(query, [habitId, date], function (err) {
@@ -230,6 +246,31 @@ app.post("/habits/:id/log", authenticateToken, (req, res) => {
         });
     });
 });
+
+app.delete("/habits/:id/log", authenticateToken, (req, res) => {
+    const habitID = req.params.id;
+    let {date} = req.body || {};
+
+    if (!habitID) {
+        return res.status(400).json({error: "habit_id is required"});
+    }
+
+    if (!date) {
+        date = new Date().toISOString().split("T")[0];
+    }
+
+    const query = `DELETE FROM habit_logs WHERE habit_id = ? AND date = ?`;
+    db.run(query, [habitID, date], function (err) {
+        if (err) {
+            return res.status(500).json({error: err.message});
+        }
+        if (this.changes === 0) {
+            return res.status(404).json({ error: "Log not found for that habit"});
+        }
+
+        res.status(200).json({ message: "Habit deleted successfully"});
+    })
+})
 
 app.get("/habits/:id/logs", authenticateToken, (req, res) => {
     const habitId = req.params.id;
@@ -264,19 +305,77 @@ function authenticateToken(req, res, next) {
 function toUTC(d) { return  new Date(d + "T00:00:00z"); }
 function daysBetween(a, b) { return Math.round((toUTC(a) - toUTC(b)) / 86400000); }
 
-function calcStreak(dateStringsDesc) {
+function calcStreak(freqType, timesPerWeek, dateStringsDesc) {
     if (!dateStringsDesc || dateStringsDesc.length === 0) return 0;
-    let streak = 1;
-    for (let i = 1; i < dateStringsDesc.length; i++) {
-        const prev = dateStringsDesc[i-1];
-        const curr = dateStringsDesc[i];
-        if (daysBetween(prev, curr) === 1) {
-            streak++;
-        } else {
-            break;
+    const len = dateStringsDesc.length;
+
+    if (freqType === "daily") {
+        let streak = 1;
+        for (let i = 1; i < len; i++) {
+            const prev = dateStringsDesc[i - 1];
+            const curr = dateStringsDesc[i];
+            if (daysBetween(prev, curr) === 1) {
+                streak++;
+            } else {
+                break;
+            }
         }
+        return streak;
+    } 
+    else if (freqType === "weekly") {
+        let streak = 1;
+        const curr = dateStringsDesc[0];
+        for (let i = 1; i < len; i++) {
+            const prev = dateStringsDesc[i];
+            const diff = daysBetween(prev, curr);
+            if (diff > (i - 1) * 7 && diff <= i * 7) {
+                streak++;
+            } else {
+                break;
+            }
+        }
+        return streak;
+    } 
+    else if (freqType === "custom") {
+        let streak = 0;
+        let daysThisWeek = 1;
+
+        const dayOfWeek = toUTC(dateStringsDesc[0]).getDay();
+        let i = 1;
+
+        if (dayOfWeek < timesPerWeek) {
+            while (i < len) {
+                const prev = dateStringsDesc[i - 1];
+                const curr = dateStringsDesc[i];
+                daysThisWeek += daysBetween(prev, curr);
+                if (daysThisWeek >= dayOfWeek) break;
+                i++;
+            }
+        }
+
+        daysThisWeek = 1;
+        let daysPassed = 1;
+
+        for (; i < len; i++) {
+            const prev = dateStringsDesc[i - 1];
+            const curr = dateStringsDesc[i];
+            daysThisWeek++;
+            daysPassed += daysBetween(prev, curr);
+
+            if (daysPassed < 7) continue;
+
+            if (daysThisWeek >= timesPerWeek) {
+                streak++;
+            } else {
+                return streak;
+            }
+
+            daysThisWeek = 1;
+            daysPassed = 0;
+        }
+
+        return streak;
     }
-    return streak;
 }
 
 function toCamelCase(row) {
