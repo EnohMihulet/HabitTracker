@@ -1,24 +1,28 @@
 Habit Tracker
-    - A full-stack habit tracking web app.
-    - Track habits, log completions, and see your current streak.
+    - A full-stack habit tracking web app to help users build consistency and visualize progress.
+    -  Track habits, log completions, and see streaks at a glance with a heatmap.
 
-Live Features (So Far)
-    - Authentication
-    - User registration and login
-    - Adding and removing habits
-    - Secure password hashing
-    - JWT-based authentication
+Authentication
+    - Secure user registration and login
+    - Passwords hashed with bcrypt
+    - JWT-based authentication for protected routes
 
 Habits
     - Create, read, update, and delete habits
-    - Store frequency
+    - Configure frequency: daily, weekly, or custom times per week
 
 Habit Logs
-    - Log completions with optional back-dated entries
+    - Log completions
     - Prevent duplicate logs per habit per day
 
 Streaks
-    - Calculate streaks based on frequency (weekly, daily, custom)
+    - Automatic streak calculation based on habit frequency
+    - Visual indicator for current streaks
+
+Heatmap
+    - 13-week grid (GitHub-style) showing completed days
+    - Dynamic month labels aligned with calendar
+    - Hover tooltips to view exact dates
 
 
 Stack
@@ -34,5 +38,3 @@ Stack
     - Next.js
     - React
     - Tailwind
-    - Fetch API
-    - Client-side routing & auth state management

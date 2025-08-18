@@ -19,6 +19,16 @@ export default function Home() {
     const [isEditingHabit, setIsEditingHabit] = useState(false);
     const [editingHabitIndex, setEditingHabitIndex] = useState();
 
+    const [logID, setLogId] = useState(0);
+    const [logIndex, setLogIndex] = useState(0);
+    const [heatmap, setHeatmap] = useState(() => Array(91).fill({on:false, date: null}));
+    const [dayOfTheMonth, setDayOfTheMonth] = useState(1);
+    const [month, setMonth] = useState(0);
+
+    const [dayNames, setDayNames] = useState(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+    const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug", "Sept", "Oct", "Nov", "Dec"];
+    const monthsToShow = [0,1,2].map(k => monthLabels[(month - k + 11) % 12]);
+
     const handleAddHabit = async (e) => {
         e.preventDefault();
         setFormError("");
@@ -133,6 +143,31 @@ export default function Home() {
         }
     }
 
+    const getLogs = async () => {
+        const token = localStorage.getItem("token");
+        if (!token || !isTokenValid(token)) {
+            localStorage.removeItem("token");
+            router.replace("/login");
+            return;
+        }
+
+        const res = await fetch(`http://localhost:4000/habits/${logID}/logs`, {
+            method: "GET",
+            headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`}
+        });
+
+        if (!res.ok) {
+            return;
+        }
+
+        const data = await res.json().catch(() => ({}));
+        fillDays(data);
+    }
+
+    useEffect(() => {
+        if (habits.length > 0) getLogs();
+    }, [habits, logID]);
+
     useEffect(() => {
         if (!isEditingHabit) return;
         if (editingHabitIndex == null) return;
@@ -154,31 +189,35 @@ export default function Home() {
             router.replace("/login");
             return;
         }
+
+        const habitId = habits[index].id;
+        const method = completed ? "POST" : "DELETE";
         
-        if (completed === true) {
-            const update_res = await fetch(`http://localhost:4000/habits/${habits[index].id}/log`, {
-                method: "POST",
-                headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`}
-            });
+        const res = await fetch(`http://localhost:4000/habits/${habitId}/log`, {
+            method,
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`}
+        });
 
-            const data = await update_res.json().catch(() => ({}));
-
-            if (!update_res.ok) {
-                return;
-            }
-        } else {
-            const update_res = await fetch(`http://localhost:4000/habits/${habits[index].id}/log`, {
-                method: "DELETE",
-                headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`}
-            });
-
-            const data = await update_res.json().catch(() => ({}));
-
-            if (!update_res.ok) {
-                return;
-            }
+        if (!res.ok) {
+            setHabits(prev => prev.map((h, i) => (i === index ? {...h, completed: !completed} : h)));
+            return;
         }
+
+        await fetchHabits();
+        if (index === 0) getLogs();
     }
+
+    const fetchHabits = async () => {
+        const token = localStorage.getItem("token");
+        const res = await fetch("http://localhost:4000/habits/streaks", {
+            method: "GET",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            setHabits(data);
+        }
+    };
 
     useEffect(() => {
         const token = localStorage.getItem("token");
@@ -198,20 +237,14 @@ export default function Home() {
 
             if (res.ok) {
                 setHabits(data);
-            }
+                setLogId(data[logIndex].id);
+             }
         }
         fetchData();
+        setUpCalendarData();
     }, [])
 
-    function isTokenValid(token) {
-        try {
-            const payload = JSON.parse(atob(token.split(".")[1]));
-            const now = Math.floor(Date.now() / 1000);
-            return payload.exp && payload.exp > now;
-        } catch (e) {
-            return false;
-        }
-    }
+    
 
     return (
         <main className="flex flex-col min-h-screen bg-gray-50 text-gray-900">
@@ -233,10 +266,10 @@ export default function Home() {
             )}
     
             {/* Main Section */}
-            <section className="mx-auto grid w-full max-w-6xl flex-1 grid-cols-1 gap-8 p-6 md:grid-cols-3">
+            <section className="mx-auto grid w-full flex-1 grid-cols-1 gap-30 p-10 pr-30 pl-30 md:grid-cols-5">
 
                 {/* Habits Section */}
-                <section className="col-span-2">
+                <section className="col-span-3">
                     <div className="mb-3 flex items-center justify-between">
                         <h2 className="pl-3 text-3xl">Habits</h2>
                         {/* Buttons to add, remove, or edit habits */}
@@ -327,7 +360,7 @@ export default function Home() {
                                                     <span className="text-sm text-gray-800">Custom</span>
                                                 </label>
                                                 {frequencyType === "custom" && ( 
-                                                    <input type="number" min={1} max={7} inputMode="numeric" value={timesPerWeek} onChange={(e) => setTimesPerWeek(Number(e.target.value))} placeholder="Times / week" className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900"/> )}
+                                                    <input type="number" min={1} max={7} inputMode="numeric" value={timesPerWeek ? timesPerWeek : 2} onChange={(e) => setTimesPerWeek(Number(e.target.value))} placeholder="Times / week" className="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900"/> )}
                                             </div>
                                         </fieldset>
                                         {formError && <p className="text-sm text-red-600">{formError}</p>}
@@ -384,11 +417,44 @@ export default function Home() {
                 </section>
 
                 {/* Right Section */}
-                <section className="flex flex-col bg-blue-500 rounded">
-                    {/* GITHUB STYPE ACTIVITY CHART TODO */}
-                    <h2 className="text-3xl font-semibold w-125">TEMPORARY</h2>
+                <section className="flex flex-col col-span-2 ">
+                    <div className="flex gap-6 bg-white rounded-2xl border border-gray-200 p-6 shadow-md text-gray-700">
+                        {/* Month Labels */}
+                        <div className={["flex flex-col gap-43 pr-2 text-sm font-medium text-gray-500", dayOfTheMonth < 15 ? dayOfTheMonth < 8 ? "pt-8" : "pt-16" : 
+                            dayOfTheMonth < 22 ? "pt-24" : "pt-32"].join(" ")}>
+                            {monthsToShow.map((monthName, i) => ( 
+                            <span key={i} className={`h-4 tracking-wide`}>
+                                {monthName}
+                            </span>
+                            ))}
+                        </div>
+                        {/* Day Labels */}
+                        <div className="flex flex-col">
+                            <div className="grid grid-flow-col gap-2 pb-2">
+                                {dayNames.map((dayName, i) => (
+                                <div key={i} className="text-xs font-medium text-gray-400 h-5 flex items-end justify-start w-7">
+                                    { i % 2 === 0 ? dayName : ""}
+                                </div>
+                                ))}
+                            </div>
+                            {/* Heatmap */}
+                            <div className="grid grid-cols-7 grid-flow-row gap-1.5">
+                            {heatmap.map((d, i) => (
+                                <div key={i} className="relative group">
+                                    <button type="button" aria-label={d.date} className={["w-7 h-7 rounded-md transition duration-150 hover:scale-105", d.on ? "bg-green-500 hover:bg-green-600" : "bg-gray-300 opacity-40 hover:opacity-70"].join(" ")}/>
+                                    <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 -top-8 whitespace-nowrap rounded px-2 py-1 text-xs text-white bg-gray-500
+                                    opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                                        {d.date}
+                                    </span>
+                                </div>
+                            ))}
+                            </div>
+                            <input type="number" min={1} max={habits.length} value={Number(logIndex) + 1} inputMode="numeric" placeholder="Habit to display" className="w-40 mt-5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition" 
+                            onChange={(e) => {setLogIndex(e.target.value - 1); setLogId(habits[Number(e.target.value - 1)].id)}}/>
+                        </div>
+                        
+                    </div>
                 </section>
-                
             </section>
     
 
@@ -396,5 +462,44 @@ export default function Home() {
                 &copy; {new Date().getFullYear()} Habit Tracker. enohmihulet@gmail.com
            </footer>
         </main>
-      );
+    );
+      
+    function isTokenValid(token) {
+        try {
+            const payload = JSON.parse(atob(token.split(".")[1]));
+            const now = Math.floor(Date.now() / 1000);
+            return payload.exp && payload.exp > now;
+        } catch (e) {
+            return false;
+        }
     }
+
+    function fillDays(data) {
+        const today = new Date();
+      
+        const logged = new Set((data?.logs ?? []).map(l => l.date));
+      
+        const arr = Array.from({ length: 91 }, (_, i) => {
+          const d = new Date(today);
+          d.setUTCDate(d.getUTCDate() - i);
+          const iso = d.toISOString().slice(0, 10);
+          return { on: logged.has(iso), date: iso };
+        });
+      
+        setHeatmap(arr);
+        console.log(arr);
+      }
+
+    function setUpCalendarData() {
+        const today = new Date();
+        const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+        const date = today.toISOString().split("T")[0].split("-");
+        setDayOfTheMonth(Number(date[2]));
+        setMonth(Number(date[1]));
+        for (let i = 0; i < today.getDay(); i++) {
+            daysOfWeek.push(daysOfWeek.shift());
+        }
+        setDayNames(daysOfWeek);
+    }
+}
