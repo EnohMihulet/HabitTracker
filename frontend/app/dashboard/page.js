@@ -54,7 +54,7 @@ export default function Home() {
     
         setIsSubmitting(true);
         try {
-            const add_res = await fetch("http://localhost:4000/habits", {
+            const add_res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/habits`, {
                 method: "POST",
                 headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`,},
                 body: JSON.stringify({name, frequencyType, timesPerWeek: tpw})
@@ -87,7 +87,7 @@ export default function Home() {
             return;
         }
 
-        const rem_res = await fetch(`http://localhost:4000/habits/${habitID}`, {
+        const rem_res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/habits/${habitID}`, {
             method: "DELETE",
             headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`}
         });
@@ -130,7 +130,7 @@ export default function Home() {
             return;
         }
 
-        const edit_res = await fetch(`http://localhost:4000/habits/${habitID}`, {
+        const edit_res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/habits/${habitID}`, {
             method: "PUT",
             headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`},
             body: JSON.stringify({name, frequencyType, timesPerWeek: tpw})
@@ -151,7 +151,7 @@ export default function Home() {
             return;
         }
 
-        const res = await fetch(`http://localhost:4000/habits/${logID}/logs`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/habits/${logID}/logs`, {
             method: "GET",
             headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`}
         });
@@ -192,7 +192,7 @@ export default function Home() {
 
         const method = completed ? "POST" : "DELETE";
         
-        const res = await fetch(`http://localhost:4000/habits/${habitID}/log`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/habits/${habitID}/log`, {
             method,
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`}
         });
@@ -219,7 +219,7 @@ export default function Home() {
         }
 
         const fetchData = async () => {
-            const res = await fetch("http://localhost:4000/habits/streaks", {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/habits/streaks`, {
                 method: "GET",
                 headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`,}
             });
