@@ -180,7 +180,7 @@ export default function Home() {
         setTimesPerWeek(h.timesPerWeek ?? 0);
     }, [isEditingHabit, editingHabitIndex, habits]);
 
-    const updateHabit = async (index, completed, e) => {
+    const updateHabit = async (habitID, index, completed, e) => {
         setHabits(prev => prev.map((h, i) => (i === index ? { ...h, completed } : h)));
 
         const token = localStorage.getItem("token");
@@ -190,10 +190,9 @@ export default function Home() {
             return;
         }
 
-        const habitId = habits[index].id;
         const method = completed ? "POST" : "DELETE";
         
-        const res = await fetch(`http://localhost:4000/habits/${habitId}/log`, {
+        const res = await fetch(`http://localhost:4000/habits/${habitID}/log`, {
             method,
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`}
         });
@@ -203,21 +202,13 @@ export default function Home() {
             return;
         }
 
-        await fetchHabits();
+        const data = await res.json();
+        const {newStreak} = data;
+
+        setHabits(prev => prev.map((h, i) => (i === index ? { ...h, streak: typeof newStreak === "number" ? newStreak : h.streak } : h)));
+
         if (index === 0) getLogs();
     }
-
-    const fetchHabits = async () => {
-        const token = localStorage.getItem("token");
-        const res = await fetch("http://localhost:4000/habits/streaks", {
-            method: "GET",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-            const data = await res.json();
-            setHabits(data);
-        }
-    };
 
     useEffect(() => {
         const token = localStorage.getItem("token");
@@ -396,7 +387,7 @@ export default function Home() {
                                         <div>{habit.streak}</div>
                                     </div>}
 
-                                    <button type="button" aria-pressed={habit.completed} onClick={(e) => updateHabit(index, !habit.completed, e)} 
+                                    <button type="button" aria-pressed={habit.completed} onClick={(e) => updateHabit(habit.id, index, !habit.completed, e)} 
                                     className={["relative inline-flex h-8 w-8 items-center justify-center rounded-full border transition hover:scale-110",
                                     habit.completed ? "bg-green-500 border-green-500" : "bg-white border-gray-300 hover:border-gray-400"].join(" ")} title={habit.completed ? "Unmark" : "Mark"}>
                                         {habit.completed && (<CheckIcon className="h-5 w-5 text-white"/>)}
@@ -487,8 +478,7 @@ export default function Home() {
         });
       
         setHeatmap(arr);
-        console.log(arr);
-      }
+       }
 
     function setUpCalendarData() {
         const today = new Date();
